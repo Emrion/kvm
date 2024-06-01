@@ -1,0 +1,57 @@
+#!/bin/sh
+
+VMdir=`dirname $(readlink -f $0)`
+
+# Source common functions
+. $VMdir/functions
+
+VMname=$1
+TestArgVM $0 $VMname 
+
+VMdir=$VMdir/vm/$VMname
+
+TestRoot
+TestVM $VMdir
+
+echo "You're about to destroy the VM $VMname (all its data will be destroyed)..."
+read -p "This will be irreversible, are you sure (y/N)? " rep
+case "$rep" in
+	[yY]*) 	;;
+	*) echo "Destruction canceled."
+	   return 0;;
+esac
+unset rep
+
+pid=`Status $VMname`
+if [ "$pid" -gt 0 ]; then
+	read -p "This Vm is running. Shall we stop it (y/N)? " rep
+	case "$rep" in
+		[yY]*) 	;;
+		*) echo "Destruction canceled."
+	   	    return 0;;
+	esac
+	unset rep
+fi
+
+zVM=`GetVMDataset $VMdir`
+if [ -z "$zVM" ]; then
+		echo "Cannot find the VM dataset."
+		exit 1
+fi
+
+zfs destroy -rf $zVM
+TestErr "Cannot destroy $zVM dataset" $?
+echo "Dataset $zVM destroyed."
+
+# Look if a rc script is to delete
+RCTarget="$RCFileLocation/$VMname"
+if [ -f "$RCTarget" ]; then
+	# Check if it's really a kvm rc script to avoid a collision name
+	if (CheckRC $RCTarget) then
+		echo "RC script $RCTarget removed."
+		rm -f $RCTarget
+	fi
+fi	
+ 
+
+echo "*** VM $VMname destroyed ***"

@@ -1,0 +1,40 @@
+#!/bin/sh
+
+. functions
+VMd=`dirname $(readlink -f $0)`
+
+TestRoot
+TestArgVM $0 $1
+
+VMname=$1
+VMdir="$VMd/vm/$VMname"
+TestVM $VMdir
+
+if ! [ -e "$VMdir/$ConfFile" ]; then
+	echo "This VM has no file $ConfFile! Exiting."
+	exit 1
+fi
+
+. $VMdir/$ConfFile
+if [ -z "$ISO" ]; then
+	echo "There is no iso file in this VM. Nothing to eject."
+	exit 0
+fi
+
+ISOp="$ISO"
+r=$(grep  -v "^[ 	]*ISO=" "$VMdir/$ConfFile")
+cp "$VMdir/$ConfFile" "$VMdir/$ConfFile.sav"
+echo "$r" > "$VMdir/$ConfFile"
+
+unset ISO
+. $VMdir/$ConfFile
+if [ -n "$ISO" ]; then
+	echo "Cannot eject the iso file! Please inspect $VMdir/$ConfFile."
+	exit 1
+fi
+
+echo "$ISOp file ejected from VM."
+p=`Status "$VMname"`
+if [ "$p" -gt 0 ]; then
+	echo "Please stop and restart the VM to this change takes effect."
+fi

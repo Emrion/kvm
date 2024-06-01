@@ -1,0 +1,42 @@
+#!/bin/sh
+
+# PROVIDE: ***
+# REQUIRE:
+# BEFORE: 
+# KEYWORD:
+
+. /etc/rc.subr
+
+name="***"
+rcvar="${name}_enable"
+start_cmd="${name}_start"
+stop_cmd="${name}_stop"
+status_cmd="${name}_status"
+extra_commands="status"
+load_rc_config $name
+: ${***_enable:=no}
+
+vm_dir="&&&"
+
+***_start()
+{
+	${vm_dir}/start $name &
+}
+
+***_stop()
+{
+	${vm_dir}/stop $name
+}
+
+***_status()
+{
+	local pid
+	pid=`${vm_dir}/status $name`
+	if [ "$pid" -gt 0 ]; then
+		echo "$name is running (${pid})."
+	else
+		echo "$name is not running."	
+	fi
+}
+
+run_rc_command "$1"

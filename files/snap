@@ -1,0 +1,57 @@
+#!/bin/sh
+
+usage()
+{
+	echo 'Usage:'
+	echo "$0 [create|destroy|rollback] VMname SnapshotName"
+	echo "$0 list VMname"
+}
+
+VMdir=`dirname $(readlink -f $0)`
+
+# Source common functions
+. $VMdir/functions
+
+# Requirements to run	
+TestRoot
+if [ "$#" -lt 2 ]; then
+	usage
+	return 1
+fi
+
+VMname="$2"
+VMdir="$VMdir/vm/$VMname"
+TestVM "$VMdir"
+
+# Get the concerned zfs dataset name
+zVM=`GetVMDataset "$VMdir"`
+if [ -z "$zVM" ]; then
+	echo "Cannot found the dataset mounted at $VMdir."
+	return 1
+fi
+
+case "$1" in
+
+	l*) zfs list -t snap -o name,referenced,creation | head -1
+	    zfs list -t snap -o name,referenced,creation | grep "$VMname@"
+	    return 0;;
+esac
+	
+if [ "$#" -lt 3 ]; then
+	usage
+	return 1
+fi 
+
+case "$1" in
+
+	c*) zfs snapshot "$zVM@$3";;
+	d*) zfs destroy "$zVM@$3";;
+	r*) pid=`Status "$VMname"`
+	    if [ "$pid" -gt 0 ]; then
+		echo "Please stop the VM before rollback."
+	        return 1
+	    fi
+	    zfs rollback "$zVM@$3";;
+	*) usage
+           return 1;;
+esac

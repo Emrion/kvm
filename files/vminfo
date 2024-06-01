@@ -1,0 +1,167 @@
+#!/bin/sh
+
+Exam()
+{
+	if [ -z "$1" ]; then
+		echo -n "not defined"
+	else
+		echo -n "$@"
+	fi
+}
+
+# ExtracDev $Devices $Driver $ParamPos
+ExtractDev()
+{
+	local Dev="$1"
+	local Dri="$2"
+	local Pos="$3"
+	local Res
+	local r=1
+	local c="echo \$r | awk -F',' '{print \$$Pos}'"
+
+	while [ -n "$r" ]; do
+		r=`echo "$Dev" | awk -F"$Dri" '{print $2}' | awk -F' ' '{print $1}'`
+		if [ -n "$r" ]; then
+			r=`eval "$c"`
+			Res="$Res $r"
+		fi
+		Dev=`echo "$Dev" | sed "s/$Dri//"`
+	done
+	echo $Res
+}
+
+VMd=`dirname $(readlink -f $0)`
+
+# Source common functions
+. $VMd/functions
+
+VMname="$1"
+TestArgVM "$0" "$VMname" 
+VMdir="$VMd/vm/$VMname"
+TestVM "$VMdir"
+
+. $VMdir/$ConfFile
+pid=`Status "$VMname"`
+
+# Running?
+echo -n "Running: "
+if [ $pid -gt 0 ]; then
+	echo "yes (pid = $pid)"
+	echo "Started: `ps -p $pid -o start=`"
+	echo "Run time elapsed: `ps -p $pid -o etime=`"
+else
+	echo "no"
+fi
+
+# Loader
+if [ -n "$VMrom" ]; then
+	rom=`CheckLoader $VMrom`
+	if [ "$rom" = "grub" ]; then
+		GRUB=1
+		COM=1
+		VNC=0
+	fi
+	echo "Loader: $VMrom"
+else
+	echo "Loader: not defined (${Kbold}this VM cannot start!${Knormal})"
+fi
+
+# Boot for grub
+if [ -n "$Boot" ]; then
+	echo "Boot (grub-bhyve related): $Boot"
+else
+	if [ "$GRUB" = "1" ]; then
+		echo "Boot: not defined (${Kbold}as the loader is grub-bhyve, this VM won't start!${Knormal})"
+	fi
+fi
+
+# Cores and memory
+Cores=`Check "$CoresDefault" "$Cores"`
+Mem=`Check "$MemDefault" "$Mem"`
+echo "Cores: $Cores  /  RAM: $Mem"
+
+# bhyve options
+echo "bhyve options: $VMoptions"
+
+# Main disk
+echo -n "Main disk file: "
+if [ -n "$Disk" ]; then
+	echo $Disk
+	if [ -z "$DiskDriver" ]; then
+		DiskDriver=$DefaultDiskDriver
+	fi
+	echo "Main disk driver: $DiskDriver"	
+else
+	echo "not defined"
+fi
+
+# Iso image
+if [ -n "$ISO" ]; then
+	echo "Iso image: $ISO"
+fi
+
+# Means to communicate with the VM
+if  [ -n "$VNC" ] && ! [ "$VNC" = 0 ]; then
+	if ! [ "$VNC" = "wait" ]; then
+		VNC="yes"
+	fi
+else
+	VNC="no"
+fi
+echo "VNC: $VNC"
+if [ "$COM" = "1" ]; then
+	COM="yes [cu -l nmdm${VMname}B]"
+else
+	COM="no"
+fi
+echo "COM: $COM"
+
+# Devices
+Devs=`Exam "$Devices"`
+echo "Devices: $Devs"
+
+if [ -n "$Devices" ]; then
+
+	# Extract passthru devices
+	Pass=`ExtractDev "$Devices" "passthru," 1`
+	if [ -n "$Pass" ]; then
+		for dev in $Pass; do
+			echo -n "Passthru $dev:"
+			devR=`echo "$dev" | sed 's#/#:#g'`
+			devR=`pciconf -l | grep "$devR" | awk '{print $1}'`
+			if [ -n "$devR" ]; then
+				devR=`pciconf -lv "$devR" | tail -n 3 | grep 'device'`
+				devR=`echo "$devR" | sed "s#    device     =##"`
+				echo "$devR"
+			else
+				echo "${Kbold} this device doesn't exist!${Knormal}"
+			fi
+		done
+	fi
+
+	# Extract network devices
+	NetIF=`ExtractDev "$Devices" "virtio-net," 1`
+	if [ -n "$NetIF" ]; then
+		bl=`ifconfig -g bridge`
+		for ni in $NetIF; do
+			NetRes="Network interface: $ni"
+			for b in $bl; do
+				r=`ifconfig "$b" | grep "$ni"`
+				if [ -n "$r" ]; then
+					bcon="$b"
+					break
+				fi
+			done
+			if [ -n "$bcon" ]; then
+				mac=`ifconfig "$b" addr | grep "$ni" | awk '{print $1}'`
+				if [ -n "$mac" ]; then
+					NetRes="$NetRes [$mac]"
+				fi
+				NetRes="$NetRes connected to $b"
+			fi
+			echo "$NetRes"
+			unset bcon
+		done	
+	fi
+fi
+	

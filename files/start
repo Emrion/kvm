@@ -1,0 +1,167 @@
+#!/bin/sh
+
+VMd=`dirname $(readlink -f $0)`
+
+# Source common functions
+. $VMd/functions
+
+VMname="$1"
+TestArgVM "$0" "$VMname"
+
+VMdir="$VMd/vm/$VMname"
+
+TestRoot
+TestVM "$VMdir"
+
+# Source general var
+. $VMdir/$ConfFile
+
+TestRunning $VMname
+
+LogHard "Trying to start $VMname..."
+
+# Check mandatory conf VMrom
+if [ -z "$VMrom" ]; then
+	LogHard "VMrom not defined in $ConfFile. Exiting."
+	exit 1
+fi
+
+# Set some defaults
+Cores=`Check "$CoresDefault" "$Cores"`
+Mem=`Check "$MemDefault" "$Mem"`
+
+# Source pre/post Run
+. $VMdir/$RunFile
+
+
+if [ -n "$Disk" ]; then
+	if !(IsFullPath "$Disk") then
+		Disk="$VMdir/$Disk"
+	fi
+	if ! [ -e "$Disk" ]; then
+		LogHard "Disk file $Disk not found."
+		return 1
+	fi
+	if [ -z "$DiskDriver" ]; then
+		DiskDriver="$DefaultDiskDriver"
+	fi
+	disk="-s 1,$DiskDriver,$Disk"
+fi
+if [ -n "$ISO" ]; then
+	if !(IsFullPath "$ISO") then
+		ISO="$VMdir/$ISO"
+	fi
+	if ! [ -e "$ISO" ]; then
+		LogHard "ISO file $ISO not found."
+		return 1
+	fi
+	iso="-s 2,ahci-cd,$ISO"
+fi
+
+rom=`CheckLoader $VMrom`
+
+if [ "$rom" = "grub" ]; then	
+	if [ -z "$Boot" ]; then
+		LogHard '(grub-bhyve) var Boot not defined in set.conf -> exit.'
+		return 1
+	fi
+	GRUB=1
+	COM=1
+	VNC=0
+	if !(IsFullPath "$VMrom") then
+		GrubRun="$VMd/grub-bhyve"
+	else
+		GrunRun="$VMrom"
+	fi
+	unset VMrom
+fi
+if [ "$rom" = "uefi" ]; then	
+		if !(IsFullPath "$VMrom") then
+			VMrom="$VMd/$UefiRomFile"
+		fi
+	VMrom="-l bootrom,$VMrom,$VMdir/$UefiVarFile"
+fi
+
+if  [ -n "$VNC" ] && ! [ "$VNC" = 0 ]; then
+	p=5900
+	while [ -n "$(sockstat -4l | grep :$p)" ]; do
+		p=$((p+1))
+	done
+	if [ -z "$Tablet" ] || ! [ "$Tablet" = "0" ]; then
+		vnc="-s 29,xhci,tablet "
+	fi
+	vnc="$vnc-s 30,fbuf,tcp=0.0.0.0:$p"
+	LogHard "VNC port will be $p."
+	if [ "$VNC" = "wait" ]; then
+		vnc="$vnc,wait"
+	fi
+	if [ -n "$wVNC" ] && [ -n "$hVNC" ]; then
+		vnc="$vnc,w=$wVNC,h=$hVNC"
+	fi
+fi
+
+if [ "$COM" = 1 ]; then
+	if ! $(kldstat -qm nmdm); then
+		kldload nmdm
+	fi
+	com="/dev/nmdm${VMname}A"
+	comB="-l com1,$com"
+	com="-c $com"
+fi
+if [ -n "$Devices" ]; then
+	Devices=$(echo "$Devices" | sed 's/ / -s /g')
+	Devices="-s $Devices"
+fi
+if [ -n "$VMoptions" ]; then
+	VMoptions="-$VMoptions"
+fi
+
+# To start it clean
+DestroyVM "$VMname"
+
+while true; do
+
+	preRun
+	
+	if [ "$GRUB" = 1 ]; then
+		# Clean up grub if crashed
+		pid=$(ps -ax | grep grub-bhyve | grep "$VMname" | awk -F" " '{print $1}')
+		if [ -n "$pid" ]; then
+			kill -9 $pid
+		fi
+		echo "(hd0) $Disk" > "$VMdir/$GrubDeviceFile"
+		if [ -n "$ISO" ]; then
+			echo "(cd0) $ISO" >> "$VMdir/$GrubDeviceFile"
+		fi
+		case "$VMoptions" in
+ 			*S*) wired="-S" ;;
+		esac
+		$GrubRun "$wired" "$com" -m "$VMdir/$GrubDeviceFile" -M "$Mem" -r "$Boot" "$VMname"
+	fi
+
+	bcmd="bhyve "$VMoptions" -c "$Cores" -m "$Mem" -s 0,hostbridge "$disk" "$iso" -s 31,lpc "$comB" "$vnc" "$Devices" "$VMrom" "$VMname" > /dev/null"
+	echo "$bcmd"
+	eval "$bcmd"
+
+	# Reason of VM exit
+	rex=$?
+	DestroyVM $VMname
+	case "$rex" in
+		0) LogHard "Reboot $VMname.";;
+		1 | 2) LogHard "Poweroff $VMname.";;
+		3) LogHard "${VMname}: crash due to triple fault.";;
+		4) LogHard "${VMname}: crash due to an error.";;
+		*) LogHard "${VMname}: exit for unknown reason.";;
+	esac
+	
+	postRun
+
+	if [ "$rex" -ne 0 ]; then
+		return 0
+	fi
+
+done
+
+
+
+

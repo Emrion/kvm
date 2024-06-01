@@ -1,0 +1,19 @@
+# VM: ***
+
+# These commands run before launching bhyve (preRun)
+# and when bhyve exits (including reboot) for postRun.
+# All the vars set in set.conf are accessible plus others
+# like $VMdir (this dir).
+# "Common functions" are disponible as well. See the file functions.
+
+# Even if there is nothing to do, these functions must exist.
+
+preRun()
+{
+	####	
+}
+
+postRun()
+{
+	####
+}

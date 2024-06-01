@@ -1,0 +1,42 @@
+#!/bin/sh
+
+VMd=`dirname $(readlink -f $0)`
+
+# Source common functions
+. $VMd/functions
+
+
+lVM=$(ls -d $VMd/vm/*/ 2>/dev/null | sed -e "s#/##")
+if [ -z "$lVM" ]; then
+	echo "No VM has been created so far."
+	exit 0
+fi
+
+header=false
+for vm in $lVM; do
+	# Minimum verifications that the dir is indeed a VM
+	if [  -f "/$vm/$ConfFile" ] && [ -f "/$vm/$RunFile" ]; then
+		VMname=$(basename $vm)
+		pid=`Status $VMname`
+		if [ $pid -gt 0 ]; then
+			if !($header) then
+				echo 'Running VMs:'
+				echo "VMname            PID     Started"
+				header=true;
+			fi
+			started=`ps -p $pid -o start=`
+			printf "%-15.15s   %-5.5s    %s\n" "$VMname" "$pid" "$started"
+		else
+			NotRunningVM="$NotRunningVM $VMname"
+		fi	
+	fi
+done
+
+if !($header) then
+	echo "No VM is running."
+else
+	echo
+fi
+if [ -n "$NotRunningVM" ]; then
+	echo "Not running VMs:$NotRunningVM"
+fi

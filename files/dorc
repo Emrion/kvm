@@ -1,0 +1,60 @@
+#!/bin/sh
+
+RCquest()
+{
+	read -p "$1 (default=none)? " rep
+	if [ -n "$rep" ]; then
+		sed -i "" -e "s/$1/$1 $rep/1" "$RCfile"
+	fi
+}
+
+VMd=`dirname $(readlink -f $0)`
+
+# Source common functions
+. $VMd/functions
+
+TestRoot	
+
+VMname="$1"
+if [ -z "$VMname" ]; then
+	echo "Usage: $0 VMname"
+	return 1
+fi
+
+VMdir="$VMd/vm/$VMname"
+
+TestVM "$VMdir"
+
+RCtarget="$RCFileLocation/$VMname"
+if [ -f "$RCtarget" ]; then
+	if !(CheckRC "$RCtarget") then
+		echo "$RCtarget already exists and it doesn't come from kvm."
+		echo "No RC file has been created. Exiting."
+		exit 1
+	fi
+	echo "Warning! $RCtarget already exists (previous dorc creation)."
+	read -p 'Do you want to replace it (y/N)? ' rep
+	case $rep in
+		[yY]* ) break;;
+		* )     return 0;;
+	esac
+fi
+
+RCfile="$VMdir/${VMname}.rc"
+cp "$VMd/rc.template" "$RCfile"
+
+sed -i "" -e "s#\*\*\*#$VMname#g" "$RCfile"
+sed -i "" -e "s#&&&#$VMd#1" "$RCfile"
+echo "NETWORK keyword is advised for REQUIRE."
+RCquest '# REQUIRE:'
+RCquest '# BEFORE:'
+RCquest '# KEYWORD:'
+
+read -p 'Do you want to run VM at startup (y/N)? ' rep
+case $rep in
+	[yY]* ) sysrc -f $MainConfFile "${VMname}_enable=YES";;
+esac
+
+cp "$RCfile" "$RCtarget"
+chmod +x "$RCtarget"
+echo "RC script $RCtarget in place."

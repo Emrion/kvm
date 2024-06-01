@@ -1,0 +1,169 @@
+#!/bin/sh
+
+. functions
+VMd=`dirname $(readlink -f $0)`
+
+# Modify file set.conf
+# $1 is the var to set, $2 is its value, but can be empty.
+# If $2 is empty, it simply removes the first token #### encountered in set.conf
+# else replaces this token by var="value"
+SetConf()
+{
+	local S
+	if [ -n "$2" ]; then
+		S="$1=\\\"$2\\\"\\n"
+	fi
+	sed -i "" -E "1,/$KvmToken/s;$KvmToken;$S;" "$VMdir/$ConfFile"
+}
+
+RunConf()
+{	
+	sed -i "" -E "1,/$KvmToken/s;$KvmToken;$1;" "$VMdir/$RunFile"
+}
+
+TestRoot
+
+if [ -z "$1" ]; then
+	read -p "VM name ? " VMname	
+	if [ -z "$VMname" ]; then
+		echo "VM name can't be empty."
+		return 1
+	fi
+else
+	VMname="$1"
+fi
+
+VMdir="$VMd/vm/$VMname"
+
+if $(VMexists $VMdir); then
+	echo "This VM name already exists. Choose another one."
+	return 1
+fi
+
+echo "We are about to create a new VM named $VMname."
+read -p "Proceed (y/N)? " rep
+case "$rep" in
+	[yY]*) 	;;
+	*) echo "VM creation canceled."
+	   return 0;;
+esac
+
+# Get the root zfs dataset name
+zVM=`GetVMDataset $VMd`
+if [ -z "$zVM" ]; then
+	echo "Cannot found the VM root dataset."
+	return 1
+fi
+
+zVM="$zVM/vm/$VMname"
+
+echo "Create dataset $zVM."
+zfs create $zVM
+echo "Create files $ConfFile, $RunFile and $UefiVarFile in $VMdir."
+cp $VMd/set.conf.template $VMdir/$ConfFile
+sed -i "" -e "s#\*\*\*#$VMname#g" "$VMdir/$ConfFile"
+cp $VMd/run.template $VMdir/$RunFile
+sed -i "" -e "s#\*\*\*#$VMname#g" "$VMdir/$RunFile"
+cp $VMd/$UefiVarFile $VMdir/$UefiVarFile
+
+echo
+read -p "Please define a loader (uefi, grub or a loader full path) [Enter=none]: " loader
+SetConf VMrom $loader
+
+if [ -n "$loader" ]; then
+	echo "Loader set."
+	rom=`CheckLoader $loader`
+	if [ "$rom" = "grub" ]; then
+		echo "Use of grub-bhyve, so..."
+		read -p "Please enter the Boot parameter (i.e cd0, hd0,msdos1, ...): " boot	
+	fi	
+fi
+SetConf Boot $boot
+
+echo
+read -p "Please enter the cores number (default=1): " cores
+SetConf Cores $cores
+
+read -p "Please enter the VM memory (use suffixes like M,G... default=1G): " mem
+SetConf Mem $mem
+
+echo
+read -p "Please enter the bhyve options (e.g. SHAP, AHP, *no space*, default=none): " opt
+SetConf VMoptions $opt
+
+echo
+echo "Do you want to create a disk file?"
+read -p "If yes, enter its size (use suffixes like M or G, Enter=no disk): " disk
+if [ -n "$disk" ]; then
+	truncate -s $disk $VMdir/$DiskFile
+	echo "Created $VMdir/$DiskFile."
+	disk="$DiskFile"	
+else
+	echo "No disk was created."
+fi
+SetConf Disk $disk
+
+echo
+echo 'Do want to define a basic network for this VM?'
+read -p "It will use a tap connected to a bridge and to the VM (virtio-net) (y/N): " rep
+case "$rep" in
+        [yY]*)  
+                lb=`ifconfig -l -g bridge`
+                li=`ifconfig -l`
+                if [ -n "$lb" ]; then
+                        echo "One or more bridges already exist: $lb"
+                        read -p "Please enter one in the list to use it or Enter to create a new one: " br
+                fi   
+		if [ -z "$br" ]; then
+			br="bridgeLOCAL"
+		fi
+		VMN=$(echo "$VMname" | tr '[:lower:]' '[:upper:]')
+		pre="CreateIF bridge $br\n\tCreateIF tap tap$VMN\n\tifconfig $br addm tap$VMN"
+		post="DestroyIF tap$VMN"
+		echo "On which interface would you connect the bridge: $li"
+		echo "In general, it's on a physical interface connected to LAN or WAN."
+		read -p "Type the interface name (or just Enter for no interface): " it
+		if [ -n "$it" ]; then
+			pre="$pre\n\tifconfig $br addm $it"
+		fi	
+                pre="$pre\n\tifconfig $br up"
+		RunConf "$pre"
+		RunConf "$post"
+		SetConf Devices "3,virtio-net,tap$VMN"         
+                ;;
+        *) echo 'Ok, no network.' 
+	   SetConf Devices ;;
+esac
+
+echo
+ser="to communicate with the VM use: cu -l nmdm${VMname}B"
+if [ "$rom" = "grub" ]; then
+	echo "Grub is the loader, $ser"
+	SetConf vnc
+	SetConf COM
+else
+	echo "Do you want to activate a VNC server? If yes, answer 'y' or 'wait'."
+	echo "'wait' forces the VM to start *after* a VNC client is connected."
+	read -p "Enter or any other answer means No: " vnc
+	case "$vnc" in
+		[yY]*) 	vnc=1 ;;
+		wait)	;;
+		*)	unset vnc
+	esac 
+	SetConf VNC $vnc
+
+	read -p "Do you want to activate a serial console (y/N)? " com
+	case "$com" in
+		[yY]*) 	com=1; echo "Activated, $ser" ;;
+		*)	unset com
+	esac 
+	SetConf COM $com	
+fi
+
+echo
+echo "VM created."
+echo "You may need now to adjust files $RunFile and $ConfFile in $VMd/vm/$VMname/"
+echo "Use $VMd/insert $VMname /path/to/isofile to install an OS from an iso file."
+echo "If you want to create a service that runs this VM, use: $VMd/dorc $VMname"
+
+

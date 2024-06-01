@@ -1,0 +1,84 @@
+#!/bin/sh
+
+. functions
+VMd=`dirname $(readlink -f $0)`
+
+TestRoot
+
+usage()
+{
+	echo 'Usage:'
+	echo "$0 OldVMname NewVMname"
+	exit 1
+}
+
+if [ -z "$2" ]; then
+	usage
+fi
+
+oldname="$1"
+newname="$2"
+
+TestVM "$VMd/vm/$oldname"
+
+if $(VMexists "$VMd/vm/$newname"); then
+	echo "The new VM name already exists. Choose another one."
+	return 1
+fi
+
+zVM=`GetVMDataset "$Vmd/vm"`
+if [ -z "$zVM" ]; then
+	echo "Cannot found the VM root dataset."
+	return 1
+fi
+
+reset=false;
+
+if [ `Status "$oldname"` -gt 0 ]; then
+		read -p "This VM is running. Need to shut it down before. (y/N) " rep
+		case "$rep" in
+			[yY]*) 	echo -n "Stopping VM... "
+			        $VMd/stop "$oldname" > /dev/null
+				echo "Done."
+				reset=true
+				sleep 1;;
+			*) echo "Rename canceled."
+			   return 0;;
+		esac
+fi
+
+echo -n 'Renaming dataset... '
+zfs rename -f "$zVM/$oldname" "$zVM/$newname"
+TestErr "Cannot rename dataset $zVM/$oldname" $?
+echo 'Done.'
+
+echo -n "Working on $ConfFile and $RunFile... "
+sed -i "" -e "/^#/s/$oldname/$newname/g" "$VMd/vm/$newname/$ConfFile"
+sed -i "" -e "/^#/s/$oldname/$newname/g" "$VMd/vm/$newname/$RunFile"
+echo 'Done.'
+echo "Please inspect $VMd/vm/$newname/$ConfFile and $VMd/vm/$newname/$RunFile to see if all is correct."
+
+if [ -f "$RCFileLocation/$oldname" ] && CheckRC "$RCFileLocation/$oldname"; then
+	echo -n 'Working on the rc file... '
+	mv "$RCFileLocation/$oldname" "$RCFileLocation/$newname"
+	rm -f "$VMd/vm/$newname/$oldname.rc"
+	sed -i "" -e "s/# PROVIDE: $oldname/# PROVIDE: $newname/" "$RCFileLocation/$newname"
+	sed -i "" -e "s/name=\"$oldname/name=\"$newname/" "$RCFileLocation/$newname"
+	sed -i "" -e "s/$oldname\_enable/$newname\_enable/" "$RCFileLocation/$newname"
+	sed -i "" -e "s/$oldname\_start/$newname\_start/" "$RCFileLocation/$newname"
+	sed -i "" -e "s/$oldname\_stop/$newname\_stop/" "$RCFileLocation/$newname"
+	sed -i "" -e "s/$oldname\_status/$newname\_status/" "$RCFileLocation/$newname"
+	sed -i "" -e "s/$oldname\_enable/$newname\_enable/" "$MainConfFile"
+	cp "$RCFileLocation/$newname" "$VMd/vm/$newname/$newname.rc"
+	echo 'Done.'
+	echo "Please check if the old VM name isn't used in a RC script as REQUIRE."
+fi
+
+if $reset; then
+	echo "After that, don't forget to restart the VM."
+fi
+
+
+
+
+

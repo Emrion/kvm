@@ -1,0 +1,203 @@
+# Useful functions and vars
+
+readonly ConfFile="set.conf"
+readonly RunFile="run"
+readonly UefiRomFile="BHYVE_UEFI.fd"
+readonly UefiVarFile="UEFI_VARS.fd"
+readonly DiskFile="disk"
+readonly DefaultDiskDriver="nvme"
+readonly GrubDeviceFile="device.map"
+readonly RCFileLocation="/usr/local/etc/rc.d"
+readonly MainConfFile="/etc/rc.conf"
+readonly CoresDefault=1
+readonly MemDefault="1G"
+readonly KvmToken="####"
+
+readonly Kbold=`tput bold`
+readonly Knormal=`tput sgr0`
+
+# LogHard message
+# Put "message" in dmesg in addition to the console.
+LogHard()
+{
+	echo $1
+	logger -p kern.crit $1
+}
+
+# TestArgVM command VMname
+# Verify is there is a "VMname" on the "command" line.
+# Typically call as: TestArgVM $0 $1
+TestArgVM()
+{
+	if [ -z "$2" ]; then
+		echo "Usage: $1 VMname"
+		exit 1
+	fi
+}
+
+# Check if the arg (string) begins by /
+IsFullPath()
+{
+	case "$1" in
+		/*) return 0;;
+	esac
+	return 1
+}
+
+# Check if a var isn't defined. Set default.
+Check()
+{
+	if [ -z "$2" ]; then
+		echo -n "$1"
+	else
+		echo -n "$2"
+	fi
+}
+
+# Test if an error occured $1=to display $2=return value ($?)
+TestErr()
+{
+	if [ "$2" -ne 0 ]; then 
+		echo "$1. Exiting."
+		exit 1
+	fi
+}
+
+# Verify if the directory $1 exists.
+VMexists()
+{
+	if [ -d "$1" ]; then
+		return 0
+	else
+		return 1
+	fi
+}
+
+# Exit if the VM not exists.
+TestVM() 
+{
+	if ! $(VMexists "$1"); then
+		echo 'This VM does not exist.'
+		exit 1
+	fi
+}
+
+# Test if the effective user is root, exit if not.
+TestRoot()
+{
+	if [ $(id -u) -ne 0 ]; then
+		echo 'You need to be root to run this.'
+		exit 1
+	fi
+}
+
+# Get the VM dataset. Needs a VM path as arg.
+GetVMDataset()
+{
+	zVM=`zfs list -o name,mountpoint | grep "$1" | cut -f 1 -d ' '| head -1`
+	echo $zVM
+}
+
+# Get the pid of the VM $1 if running. Return 0 if not.
+Status()
+{
+	if [ -z "$1" ]; then
+		echo -1
+		return 1
+	fi
+
+	pid=`ps -ax | grep "$1" | grep bhyve: | awk -F" " '{print $1}'`
+	if [ -z "$pid" ]; then
+		pid=0
+	fi
+
+	echo $pid
+}
+
+# Test if the VM $1 is running. 
+TestRunning()
+{
+	pid=`Status "$1"`
+	if [ "$pid" -gt 0 ]; then
+		echo "$1 is already running."
+		exit 1
+	fi
+}
+
+# Test if the VM $1 isn't running.
+TestNotRunning()
+{
+	pid=`Status "$1"`
+	if [ "$pid" -le 0 ]; then
+		echo "$1 is not running."
+		exit 1
+	fi
+}
+
+#
+CheckLoader()
+{
+	local rom=$(echo `basename "$1"` | tr '[:upper:]' '[:lower:]')
+	case "$rom" in
+		*uefi*) echo 'uefi';;
+		*grub*) echo 'grub';;
+		*) echo '?'
+	esac
+}
+
+# Check that a RC file belongs to kvm. CheckRC rcfile
+CheckRC()
+{
+	if [ `grep -c '${vm_dir}' "$1"` -gt 0 ]; then
+		return 0
+	else
+		return 1
+	fi
+}
+
+# SetResolv nameserver [domain]
+# Set /etc/resolv.conf
+SetResolv()
+{
+	echo "nameserver $1" > /etc/resolv.conf
+	if [ -n "$2" ]; then
+		echo "search $2" >> /etc/resolv.conf
+	fi		
+}
+
+# SetDefaultRoute route
+# Change the default route.
+SetDefaultRoute()
+{
+	route del default > /dev/null 2>&1
+	route add default "$1" 
+}
+
+# CreateIF type name
+# Create a network interface of "type" kind and rename it "name".
+CreateIF()
+{
+	If=`ifconfig | grep "$2"`
+	if [ -z "$If" ]; then
+		ifconfig "$1" create name "$2"
+	fi
+}
+
+# DestroyIF name
+# Destroy the interface named "name".
+DestroyIF()
+{
+	If=`ifconfig | grep "$1"`
+	if [ -n "$If" ]; then
+		ifconfig "$1" destroy 
+	fi
+}
+
+# Destroy the current VM. Destroy VMname
+DestroyVM()
+{
+	if [ -e "/dev/vmm/$1" ]; then
+		bhyvectl --vm="$1" --destroy
+	fi
+}
+

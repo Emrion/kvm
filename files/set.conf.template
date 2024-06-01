@@ -1,0 +1,50 @@
+# VM settings for ***
+
+# Rom to create the VM, mandatory.
+# Can be just "grub" if grub-bhyve is used
+# Or "uefi" or a full path rom.
+## VMrom="uefi"
+####
+# If grub-bhyve is used, it's mandatory.
+## Boot="cd0" (for install) 
+## Boot="hd0,msdos1" 
+####
+# Parameters for bhyve (defaults below).
+## Cores=1
+####
+## Mem="1G"
+####
+# Options passed to bhyve. Default is none.
+## VMoptions="SAHP"
+####
+# File where install the VM and run it after. Must lie in the VM dir or full path must be given. 
+## Disk="disk"
+####
+# Driver used for the main disk (Disk), default is nvme.
+# Can be ahci-hd, virtio-blk, ...
+## DiskDriver="nvme"
+
+# User vars, any type can be defined, used here and/or in run functions.
+## LAN="tapMYVM"
+## BRI="bridgeLOCAL"
+
+# Devices to create (hostbridge and lpc are created by default).
+# Devices="Slot-number,driver,source[,options] Other-device ..."
+# Free slot-numbers are 3 - 28.
+## Devices="4,virtio-net,$LAN 5,passthru,3/0/0"
+####
+# Means to communicate with the VM
+## VNC=1 or "wait" # Only if UEFI rom was loaded.
+# "wait" is needed for some installs (Windows).
+# VNC resolution can be set with wVNC and hVNC in pixels.
+####
+# In case of VNC use, the start script sets tablet as a xhci device by default.
+# To disable this, set Tablet=0
+## Tablet=0
+
+# Open a serial console from the VM, default 0 (no)
+# To open com, run: cu -l nmdm***B
+## COM=1 # Automatically set if grub-bhyve is used.
+####
+# Iso file, typically for installation. Must reside in the VM dir or full path must be given.
+# A virtual cd is then created.The var to set is ISO.

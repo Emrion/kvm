@@ -1,0 +1,18 @@
+#!/bin/sh
+
+VMdir=`dirname $(readlink -f $0)`
+
+# Source common functions
+. $VMdir/functions
+
+VMname="$1"
+TestArgVM "$0" "$VMname"
+
+VMdir="$VMdir/vm/$VMname"
+
+TestRoot
+TestVM "$VMdir"
+TestNotRunning "$VMname"
+
+# Terminate VM
+bhyvectl --vm="$VMname" --force-poweroff
