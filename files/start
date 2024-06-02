@@ -71,7 +71,7 @@ if [ "$rom" = "grub" ]; then
 	if !(IsFullPath "$VMrom") then
 		GrubRun="$VMd/grub-bhyve"
 	else
-		GrunRun="$VMrom"
+		GrubRun="$VMrom"
 	fi
 	unset VMrom
 fi
