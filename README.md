@@ -76,7 +76,7 @@ Let's say you want a basic network. The VM needs to access the internet. You alr
 In fact, all is possible with pre/postRun scripts. You can create any interface including a bridge, change the default route and so on. The related functions are in the /\*kpool\*/kmv/functions file: SetResolv, SetDefaultRoute, CreateIF, DestroyIF. You may want to see comments for these functions. Anyway, they are just some thin wrappers that use the base commands like `ifconfig`.  
 
 Example2:  
-You have a machine with a realtek network card. You set up a pfsense VM and you want that when you launch it, this VM serves as firewall, protecting this machine from your local network. Your local ip is given by DHCP, your current gateway is 192.168.1.1. The lan interface ip of pfsense is 192.168.2.1. pfsense uses DHCP for the passtrhu re0 ("WAN").  
+You have a machine with a realtek network card. You set up a pfsense VM and you want that when you launch it, this VM serves as firewall, protecting this machine from your local network. Your local ip is given by DHCP, your current gateway is 192.168.1.1. The lan interface ip of pfsense is 192.168.2.1. pfsense uses DHCP for the passthru re0 ("WAN").  
 
 `# pciconf -l re0`  
 `re0@pci0:3:0:0: class=0x020000 rev=0x06 hdr=0x00 vendor=0x10ec device=0x8168 subvendor=0x1462 subdevice=0x7798`  
