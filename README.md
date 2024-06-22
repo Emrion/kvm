@@ -18,7 +18,7 @@ Please, even if it is not mandatory, install edk2-bhyve and grub2-bhyve packages
 
 # 3) Deinstallation
 
-Be sure that all VMs are stopped. Check in usr/local/etc/rc.d/ if there are some scripts that belong to kvm and delete them. Look into /etc/rc.conf if there are some related vars and remove them (e.g. VMname_enable=YES).  
+Be sure that all VMs are stopped. Check in /usr/local/etc/rc.d/ if there are some scripts that belong to kvm and delete them. Look into /etc/rc.conf if there are some related vars and remove them (e.g. VMname_enable=YES).  
 Run the folowing command:  
 `# zfs destroy -rf *kpool*/kvm`
 
@@ -45,7 +45,7 @@ To start the VM:
 Note: the VM is run inside an infinite loop of the start script in order to make it possible to reboot the VM. If you do just `./start myVM`, the console is exclusively held by the start script.  
 
 You can stop the VM with (it's like switch off the power):  
-`#./stop myVM`  
+`# ./stop myVM`  
 
 After installation you can remove the iso image from the VM with:  
 `# ./eject myVM`
