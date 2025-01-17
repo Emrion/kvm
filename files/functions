@@ -106,7 +106,7 @@ Status()
 		return 1
 	fi
 
-	pid=`ps -ax | grep "$1\s" | grep bhyve: | awk -F" " '{print $1}'`
+	pid=`ps -ax | grep "\s$1\s" | grep bhyve: | awk -F" " '{print $1}'`
 	if [ -z "$pid" ]; then
 		pid=0
 	fi
